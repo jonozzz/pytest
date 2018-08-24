@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function
 import pprint
 import sys
+import textwrap
 import pytest
 
-import _pytest._code
 from _pytest.main import Session, EXIT_NOTESTSCOLLECTED, _in_venv
 
 
@@ -638,6 +638,10 @@ class Test_getinitialnodes(object):
             assert col.config is config
 
     def test_pkgfile(self, testdir):
+        """Verify nesting when a module is within a package.
+        The parent chain should match: Module<x.py> -> Package<subdir> -> Session.
+            Session's parent should always be None.
+        """
         tmpdir = testdir.tmpdir
         subdir = tmpdir.join("subdir")
         x = subdir.ensure("x.py")
@@ -645,9 +649,12 @@ class Test_getinitialnodes(object):
         with subdir.as_cwd():
             config = testdir.parseconfigure(x)
         col = testdir.getnode(config, x)
-        assert isinstance(col, pytest.Module)
         assert col.name == "x.py"
-        assert col.parent.parent is None
+        assert isinstance(col, pytest.Module)
+        assert isinstance(col.parent, pytest.Package)
+        assert isinstance(col.parent.parent, pytest.Session)
+        # session is batman (has no parents)
+        assert col.parent.parent.parent is None
         for col in col.listchain():
             assert col.config is config
 
@@ -906,13 +913,13 @@ def test_fixture_scope_sibling_conftests(testdir):
     """Regression test case for https://github.com/pytest-dev/pytest/issues/2836"""
     foo_path = testdir.mkdir("foo")
     foo_path.join("conftest.py").write(
-        _pytest._code.Source(
+        textwrap.dedent(
+            """\
+            import pytest
+            @pytest.fixture
+            def fix():
+                return 1
             """
-        import pytest
-        @pytest.fixture
-        def fix():
-            return 1
-    """
         )
     )
     foo_path.join("test_foo.py").write("def test_foo(fix): assert fix == 1")

@@ -11,6 +11,7 @@ from weakref import ref
 from _pytest.compat import _PY2, _PY3, PY35, safe_str
 from six import text_type
 import py
+import six
 
 builtin_repr = repr
 
@@ -128,7 +129,7 @@ class Frame(object):
         """
         f_locals = self.f_locals.copy()
         f_locals.update(vars)
-        py.builtin.exec_(code, self.f_globals, f_locals)
+        six.exec_(code, self.f_globals, f_locals)
 
     def repr(self, object):
         """ return a 'safe' (non-recursive, one-line) string repr for 'object'
@@ -719,7 +720,9 @@ class FormattedExcinfo(object):
             repr_chain = []
             e = excinfo.value
             descr = None
-            while e is not None:
+            seen = set()
+            while e is not None and id(e) not in seen:
+                seen.add(id(e))
                 if excinfo:
                     reprtraceback = self.repr_traceback(excinfo)
                     reprcrash = excinfo._getreprcrash()

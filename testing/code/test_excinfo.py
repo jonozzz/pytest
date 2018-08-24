@@ -4,9 +4,11 @@ from __future__ import absolute_import, division, print_function
 import operator
 import os
 import sys
+import textwrap
 import _pytest
 import py
 import pytest
+import six
 from _pytest._code.code import (
     ExceptionInfo,
     FormattedExcinfo,
@@ -147,7 +149,7 @@ class TestTraceback_f_g_h(object):
                 except somenoname:
                     pass
             xyz()
-        """
+            """
         )
         try:
             exec(source.compile())
@@ -250,7 +252,7 @@ class TestTraceback_f_g_h(object):
             import sys
 
             exc, val, tb = sys.exc_info()
-            py.builtin._reraise(exc, val, tb)
+            six.reraise(exc, val, tb)
 
         def f(n):
             try:
@@ -268,7 +270,7 @@ class TestTraceback_f_g_h(object):
         decorator = pytest.importorskip("decorator").decorator
 
         def log(f, *k, **kw):
-            print("%s %s" % (k, kw))
+            print("{} {}".format(k, kw))
             f(*k, **kw)
 
         log = decorator(log)
@@ -424,7 +426,7 @@ class TestFormattedExcinfo(object):
     @pytest.fixture
     def importasmod(self, request):
         def importasmod(source):
-            source = _pytest._code.Source(source)
+            source = textwrap.dedent(source)
             tmpdir = request.getfixturevalue("tmpdir")
             modpath = tmpdir.join("mod.py")
             tmpdir.ensure("__init__.py")
@@ -448,10 +450,10 @@ class TestFormattedExcinfo(object):
     def test_repr_source(self):
         pr = FormattedExcinfo()
         source = _pytest._code.Source(
-            """
+            """\
             def f(x):
                 pass
-        """
+            """
         ).strip()
         pr.flow_marker = "|"
         lines = pr.get_source(source, 0)
@@ -883,10 +885,10 @@ raise ValueError()
 
         class MyRepr(TerminalRepr):
             def toterminal(self, tw):
-                tw.line(py.builtin._totext("я", "utf-8"))
+                tw.line(u"я")
 
-        x = py.builtin._totext(MyRepr())
-        assert x == py.builtin._totext("я", "utf-8")
+        x = six.text_type(MyRepr())
+        assert x == u"я"
 
     def test_toterminal_long(self, importasmod):
         mod = importasmod(
@@ -1264,6 +1266,50 @@ raise ValueError()
                 "E *RuntimeError: runtime problem",
             ]
         )
+
+    @pytest.mark.skipif("sys.version_info[0] < 3")
+    def test_exc_chain_repr_cycle(self, importasmod):
+        mod = importasmod(
+            """
+            class Err(Exception):
+                pass
+            def fail():
+                return 0 / 0
+            def reraise():
+                try:
+                    fail()
+                except ZeroDivisionError as e:
+                    raise Err() from e
+            def unreraise():
+                try:
+                    reraise()
+                except Err as e:
+                    raise e.__cause__
+        """
+        )
+        excinfo = pytest.raises(ZeroDivisionError, mod.unreraise)
+        r = excinfo.getrepr(style="short")
+        tw = TWMock()
+        r.toterminal(tw)
+        out = "\n".join(line for line in tw.lines if isinstance(line, str))
+        expected_out = textwrap.dedent(
+            """\
+            :13: in unreraise
+                reraise()
+            :10: in reraise
+                raise Err() from e
+            E   test_exc_chain_repr_cycle0.mod.Err
+
+            During handling of the above exception, another exception occurred:
+            :15: in unreraise
+                raise e.__cause__
+            :8: in reraise
+                fail()
+            :5: in fail
+                return 0 / 0
+            E   ZeroDivisionError: division by zero"""
+        )
+        assert out == expected_out
 
 
 @pytest.mark.parametrize("style", ["short", "long"])
