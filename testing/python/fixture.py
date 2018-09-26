@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+import sys
 import textwrap
 
 import pytest
@@ -487,6 +489,10 @@ class TestRequestBasic(object):
         assert len(arg2fixturedefs) == 1
         assert arg2fixturedefs["something"][0].argname == "something"
 
+    @pytest.mark.skipif(
+        hasattr(sys, "pypy_version_info"),
+        reason="this method of test doesn't work on pypy",
+    )
     def test_request_garbage(self, testdir):
         testdir.makepyfile(
             """
@@ -497,33 +503,32 @@ class TestRequestBasic(object):
 
             @pytest.fixture(autouse=True)
             def something(request):
-                # this method of test doesn't work on pypy
-                if hasattr(sys, "pypy_version_info"):
-                    yield
-                else:
-                    original = gc.get_debug()
-                    gc.set_debug(gc.DEBUG_SAVEALL)
-                    gc.collect()
+                original = gc.get_debug()
+                gc.set_debug(gc.DEBUG_SAVEALL)
+                gc.collect()
 
-                    yield
+                yield
 
+                try:
                     gc.collect()
                     leaked_types = sum(1 for _ in gc.garbage
                                        if isinstance(_, PseudoFixtureDef))
 
+                    # debug leaked types if the test fails
+                    print(leaked_types)
+
                     gc.garbage[:] = []
 
-                    try:
-                        assert leaked_types == 0
-                    finally:
-                        gc.set_debug(original)
+                    assert leaked_types == 0
+                finally:
+                    gc.set_debug(original)
 
             def test_func():
                 pass
         """
         )
-        reprec = testdir.inline_run()
-        reprec.assertoutcome(passed=1)
+        result = testdir.runpytest()
+        result.stdout.fnmatch_lines("* 1 passed in *")
 
     def test_getfixturevalue_recursive(self, testdir):
         testdir.makeconftest(
@@ -1583,6 +1588,7 @@ class TestFixtureManagerParseFactories(object):
             values = []
         """
         )
+        testdir.syspathinsert(testdir.tmpdir.dirname)
         package = testdir.mkdir("package")
         package.join("__init__.py").write("")
         package.join("conftest.py").write(
@@ -3977,3 +3983,71 @@ class TestScopeOrdering(object):
         items, _ = testdir.inline_genitems()
         request = FixtureRequest(items[0])
         assert request.fixturenames == "s1 p1 m1 m2 c1 f2 f1".split()
+
+    def test_multiple_packages(self, testdir):
+        """Complex test involving multiple package fixtures. Make sure teardowns
+        are executed in order.
+        .
+        └── root
+            ├── __init__.py
+            ├── sub1
+            │   ├── __init__.py
+            │   ├── conftest.py
+            │   └── test_1.py
+            └── sub2
+                ├── __init__.py
+                ├── conftest.py
+                └── test_2.py
+        """
+        root = testdir.mkdir("root")
+        root.join("__init__.py").write("values = []")
+        sub1 = root.mkdir("sub1")
+        sub1.ensure("__init__.py")
+        sub1.join("conftest.py").write(
+            textwrap.dedent(
+                """\
+            import pytest
+            from .. import values
+            @pytest.fixture(scope="package")
+            def fix():
+                values.append("pre-sub1")
+                yield values
+                assert values.pop() == "pre-sub1"
+        """
+            )
+        )
+        sub1.join("test_1.py").write(
+            textwrap.dedent(
+                """\
+            from .. import values
+            def test_1(fix):
+                assert values == ["pre-sub1"]
+        """
+            )
+        )
+        sub2 = root.mkdir("sub2")
+        sub2.ensure("__init__.py")
+        sub2.join("conftest.py").write(
+            textwrap.dedent(
+                """\
+            import pytest
+            from .. import values
+            @pytest.fixture(scope="package")
+            def fix():
+                values.append("pre-sub2")
+                yield values
+                assert values.pop() == "pre-sub2"
+        """
+            )
+        )
+        sub2.join("test_2.py").write(
+            textwrap.dedent(
+                """\
+            from .. import values
+            def test_2(fix):
+                assert values == ["pre-sub2"]
+        """
+            )
+        )
+        reprec = testdir.inline_run()
+        reprec.assertoutcome(passed=2)

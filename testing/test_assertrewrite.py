@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function
 
 import glob
@@ -57,7 +58,7 @@ def getmsg(f, extra_ns=None, must_pass=False):
     except AssertionError:
         if must_pass:
             pytest.fail("shouldn't have raised")
-        s = str(sys.exc_info()[1])
+        s = six.text_type(sys.exc_info()[1])
         if not s.startswith("assert"):
             return "AssertionError: " + s
         return s
@@ -608,6 +609,21 @@ class TestAssertionRewrite(object):
 
         assert r"where 1 = \n{ \n~ \n}.a" in util._format_lines([getmsg(f)])[0]
 
+    def test_custom_repr_non_ascii(self):
+        def f():
+            class A(object):
+                name = u"ä"
+
+                def __repr__(self):
+                    return self.name.encode("UTF-8")  # only legal in python2
+
+            a = A()
+            assert not a.name
+
+        msg = getmsg(f)
+        assert "UnicodeDecodeError" not in msg
+        assert "UnicodeEncodeError" not in msg
+
 
 class TestRewriteOnImport(object):
     def test_pycache_is_a_file(self, testdir):
@@ -759,16 +775,16 @@ def test_rewritten():
         testdir.makepyfile("import a_package_without_init_py.module")
         assert testdir.runpytest().ret == EXIT_NOTESTSCOLLECTED
 
-    def test_rewrite_warning(self, pytestconfig, monkeypatch):
-        hook = AssertionRewritingHook(pytestconfig)
-        warnings = []
-
-        def mywarn(code, msg):
-            warnings.append((code, msg))
-
-        monkeypatch.setattr(hook.config, "warn", mywarn)
-        hook.mark_rewrite("_pytest")
-        assert "_pytest" in warnings[0][1]
+    def test_rewrite_warning(self, testdir):
+        testdir.makeconftest(
+            """
+            import pytest
+            pytest.register_assert_rewrite("_pytest")
+        """
+        )
+        # needs to be a subprocess because pytester explicitly disables this warning
+        result = testdir.runpytest_subprocess()
+        result.stdout.fnmatch_lines("*Module already imported*: _pytest")
 
     def test_rewrite_module_imported_from_conftest(self, testdir):
         testdir.makeconftest(
@@ -1034,6 +1050,48 @@ class TestAssertionRewriteHookDetails(object):
         result = testdir.runpytest("-s")
         result.stdout.fnmatch_lines(["* 1 passed*"])
 
+    def test_reload_reloads(self, testdir):
+        """Reloading a module after change picks up the change."""
+        testdir.tmpdir.join("file.py").write(
+            textwrap.dedent(
+                """
+            def reloaded():
+                return False
+
+            def rewrite_self():
+                with open(__file__, 'w') as self:
+                    self.write('def reloaded(): return True')
+        """
+            )
+        )
+        testdir.tmpdir.join("pytest.ini").write(
+            textwrap.dedent(
+                """
+            [pytest]
+            python_files = *.py
+        """
+            )
+        )
+
+        testdir.makepyfile(
+            test_fun="""
+            import sys
+            try:
+                from imp import reload
+            except ImportError:
+                pass
+
+            def test_loader():
+                import file
+                assert not file.reloaded()
+                file.rewrite_self()
+                reload(file)
+                assert file.reloaded()
+            """
+        )
+        result = testdir.runpytest("-s")
+        result.stdout.fnmatch_lines(["* 1 passed*"])
+
     def test_get_data_support(self, testdir):
         """Implement optional PEP302 api (#808).
         """
@@ -1106,21 +1164,153 @@ class TestIssue925(object):
 
 
 class TestIssue2121:
-    def test_simple(self, testdir):
-        testdir.tmpdir.join("tests/file.py").ensure().write(
-            """
-def test_simple_failure():
-    assert 1 + 1 == 3
-"""
-        )
-        testdir.tmpdir.join("pytest.ini").write(
-            textwrap.dedent(
+    def test_rewrite_python_files_contain_subdirs(self, testdir):
+        testdir.makepyfile(
+            **{
+                "tests/file.py": """
+                def test_simple_failure():
+                    assert 1 + 1 == 3
                 """
-            [pytest]
-            python_files = tests/**.py
-        """
-            )
+            }
         )
-
+        testdir.makeini(
+            """
+                [pytest]
+                python_files = tests/**.py
+            """
+        )
         result = testdir.runpytest()
         result.stdout.fnmatch_lines("*E*assert (1 + 1) == 3")
+
+
+def test_rewrite_infinite_recursion(testdir, pytestconfig, monkeypatch):
+    """Fix infinite recursion when writing pyc files: if an import happens to be triggered when writing the pyc
+    file, this would cause another call to the hook, which would trigger another pyc writing, which could
+    trigger another import, and so on. (#3506)"""
+    from _pytest.assertion import rewrite
+
+    testdir.syspathinsert()
+    testdir.makepyfile(test_foo="def test_foo(): pass")
+    testdir.makepyfile(test_bar="def test_bar(): pass")
+
+    original_write_pyc = rewrite._write_pyc
+
+    write_pyc_called = []
+
+    def spy_write_pyc(*args, **kwargs):
+        # make a note that we have called _write_pyc
+        write_pyc_called.append(True)
+        # try to import a module at this point: we should not try to rewrite this module
+        assert hook.find_module("test_bar") is None
+        return original_write_pyc(*args, **kwargs)
+
+    monkeypatch.setattr(rewrite, "_write_pyc", spy_write_pyc)
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)
+
+    hook = AssertionRewritingHook(pytestconfig)
+    assert hook.find_module("test_foo") is not None
+    assert len(write_pyc_called) == 1
+
+
+class TestEarlyRewriteBailout(object):
+    @pytest.fixture
+    def hook(self, pytestconfig, monkeypatch, testdir):
+        """Returns a patched AssertionRewritingHook instance so we can configure its initial paths and track
+        if imp.find_module has been called.
+        """
+        import imp
+
+        self.find_module_calls = []
+        self.initial_paths = set()
+
+        class StubSession(object):
+            _initialpaths = self.initial_paths
+
+            def isinitpath(self, p):
+                return p in self._initialpaths
+
+        def spy_imp_find_module(name, path):
+            self.find_module_calls.append(name)
+            return imp.find_module(name, path)
+
+        hook = AssertionRewritingHook(pytestconfig)
+        # use default patterns, otherwise we inherit pytest's testing config
+        hook.fnpats[:] = ["test_*.py", "*_test.py"]
+        monkeypatch.setattr(hook, "_imp_find_module", spy_imp_find_module)
+        hook.set_session(StubSession())
+        testdir.syspathinsert()
+        return hook
+
+    def test_basic(self, testdir, hook):
+        """
+        Ensure we avoid calling imp.find_module when we know for sure a certain module will not be rewritten
+        to optimize assertion rewriting (#3918).
+        """
+        testdir.makeconftest(
+            """
+            import pytest
+            @pytest.fixture
+            def fix(): return 1
+        """
+        )
+        testdir.makepyfile(test_foo="def test_foo(): pass")
+        testdir.makepyfile(bar="def bar(): pass")
+        foobar_path = testdir.makepyfile(foobar="def foobar(): pass")
+        self.initial_paths.add(foobar_path)
+
+        # conftest files should always be rewritten
+        assert hook.find_module("conftest") is not None
+        assert self.find_module_calls == ["conftest"]
+
+        # files matching "python_files" mask should always be rewritten
+        assert hook.find_module("test_foo") is not None
+        assert self.find_module_calls == ["conftest", "test_foo"]
+
+        # file does not match "python_files": early bailout
+        assert hook.find_module("bar") is None
+        assert self.find_module_calls == ["conftest", "test_foo"]
+
+        # file is an initial path (passed on the command-line): should be rewritten
+        assert hook.find_module("foobar") is not None
+        assert self.find_module_calls == ["conftest", "test_foo", "foobar"]
+
+    def test_pattern_contains_subdirectories(self, testdir, hook):
+        """If one of the python_files patterns contain subdirectories ("tests/**.py") we can't bailout early
+        because we need to match with the full path, which can only be found by calling imp.find_module.
+        """
+        p = testdir.makepyfile(
+            **{
+                "tests/file.py": """
+                        def test_simple_failure():
+                            assert 1 + 1 == 3
+                        """
+            }
+        )
+        testdir.syspathinsert(p.dirpath())
+        hook.fnpats[:] = ["tests/**.py"]
+        assert hook.find_module("file") is not None
+        assert self.find_module_calls == ["file"]
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win32"), reason="cannot remove cwd on Windows"
+    )
+    def test_cwd_changed(self, testdir):
+        testdir.makepyfile(
+            **{
+                "test_bar.py": """
+                import os
+                import shutil
+                import tempfile
+
+                d = tempfile.mkdtemp()
+                os.chdir(d)
+                shutil.rmtree(d)
+            """,
+                "test_foo.py": """
+                def test():
+                    pass
+            """,
+            }
+        )
+        result = testdir.runpytest()
+        result.stdout.fnmatch_lines("* 1 passed in *")

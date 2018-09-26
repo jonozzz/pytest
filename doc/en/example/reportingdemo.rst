@@ -423,7 +423,7 @@ get on the terminal - we are working on that)::
             name = "abc-123"
             module = imp.new_module(name)
             code = _pytest._code.compile(src, name, "exec")
-            py.builtin.exec_(code, module.__dict__)
+            six.exec_(code, module.__dict__)
             sys.modules[name] = module
     >       module.foo()
 
@@ -613,9 +613,9 @@ get on the terminal - we are working on that)::
 
     failure_demo.py:261: AssertionError
     ============================= warnings summary =============================
-    <undetermined location>
-      Metafunc.addcall is deprecated and scheduled to be removed in pytest 4.0.
-      Please use Metafunc.parametrize instead.
+    $REGENDOC_TMPDIR/assertion/failure_demo.py:24: RemovedInPytest4Warning: Metafunc.addcall is deprecated and scheduled to be removed in pytest 4.0.
+    Please use Metafunc.parametrize instead.
+      metafunc.addcall(funcargs=dict(param1=3, param2=6))
 
-    -- Docs: http://doc.pytest.org/en/latest/warnings.html
+    -- Docs: https://docs.pytest.org/en/latest/warnings.html
     ================== 42 failed, 1 warnings in 0.12 seconds ===================

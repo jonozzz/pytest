@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import inspect
-import os
 import sys
 import warnings
 from collections import OrderedDict, deque, defaultdict
@@ -93,7 +92,7 @@ def get_scope_package(node, fixturedef):
 
     cls = pytest.Package
     current = node
-    fixture_package_name = os.path.join(fixturedef.baseid, "__init__.py")
+    fixture_package_name = "%s/%s" % (fixturedef.baseid, "__init__.py")
     while current and (
         type(current) is not cls or fixture_package_name != current.nodeid
     ):
@@ -1258,6 +1257,8 @@ class FixtureManager(object):
         items[:] = reorder_items(items)
 
     def parsefactories(self, node_or_obj, nodeid=NOTSET, unittest=False):
+        from _pytest import deprecated
+
         if nodeid is not NOTSET:
             holderobj = node_or_obj
         else:
@@ -1280,10 +1281,15 @@ class FixtureManager(object):
                 if not callable(obj):
                     continue
                 marker = defaultfuncargprefixmarker
-                from _pytest import deprecated
 
-                self.config.warn(
-                    "C1", deprecated.FUNCARG_PREFIX.format(name=name), nodeid=nodeid
+                filename, lineno = getfslineno(obj)
+                warnings.warn_explicit(
+                    RemovedInPytest4Warning(
+                        deprecated.FUNCARG_PREFIX.format(name=name)
+                    ),
+                    category=None,
+                    filename=str(filename),
+                    lineno=lineno + 1,
                 )
                 name = name[len(self._argprefix) :]
             elif not isinstance(marker, FixtureFunctionMarker):

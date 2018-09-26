@@ -83,6 +83,57 @@ def test_testdir_runs_with_plugin(testdir):
     result.assert_outcomes(passed=1)
 
 
+def test_runresult_assertion_on_xfail(testdir):
+    testdir.makepyfile(
+        """
+        import pytest
+
+        pytest_plugins = "pytester"
+
+        @pytest.mark.xfail
+        def test_potato():
+            assert False
+    """
+    )
+    result = testdir.runpytest()
+    result.assert_outcomes(xfailed=1)
+    assert result.ret == 0
+
+
+def test_runresult_assertion_on_xpassed(testdir):
+    testdir.makepyfile(
+        """
+        import pytest
+
+        pytest_plugins = "pytester"
+
+        @pytest.mark.xfail
+        def test_potato():
+            assert True
+    """
+    )
+    result = testdir.runpytest()
+    result.assert_outcomes(xpassed=1)
+    assert result.ret == 0
+
+
+def test_xpassed_with_strict_is_considered_a_failure(testdir):
+    testdir.makepyfile(
+        """
+        import pytest
+
+        pytest_plugins = "pytester"
+
+        @pytest.mark.xfail(strict=True)
+        def test_potato():
+            assert True
+    """
+    )
+    result = testdir.runpytest()
+    result.assert_outcomes(failed=1)
+    assert result.ret != 0
+
+
 def make_holder():
     class apiclass(object):
         def pytest_xyz(self, arg):
@@ -213,57 +264,6 @@ class TestInlineRunModulesCleanup(object):
         )
         testdir.inline_run(str(test_mod))
         assert imported.data == 42
-
-
-def test_inline_run_clean_sys_paths(testdir):
-    def test_sys_path_change_cleanup(self, testdir):
-        test_path1 = testdir.tmpdir.join("boink1").strpath
-        test_path2 = testdir.tmpdir.join("boink2").strpath
-        test_path3 = testdir.tmpdir.join("boink3").strpath
-        sys.path.append(test_path1)
-        sys.meta_path.append(test_path1)
-        original_path = list(sys.path)
-        original_meta_path = list(sys.meta_path)
-        test_mod = testdir.makepyfile(
-            """
-            import sys
-            sys.path.append({:test_path2})
-            sys.meta_path.append({:test_path2})
-            def test_foo():
-                sys.path.append({:test_path3})
-                sys.meta_path.append({:test_path3})""".format(
-                locals()
-            )
-        )
-        testdir.inline_run(str(test_mod))
-        assert sys.path == original_path
-        assert sys.meta_path == original_meta_path
-
-    def spy_factory(self):
-        class SysPathsSnapshotSpy(object):
-            instances = []
-
-            def __init__(self):
-                SysPathsSnapshotSpy.instances.append(self)
-                self._spy_restore_count = 0
-                self.__snapshot = SysPathsSnapshot()
-
-            def restore(self):
-                self._spy_restore_count += 1
-                return self.__snapshot.restore()
-
-        return SysPathsSnapshotSpy
-
-    def test_inline_run_taking_and_restoring_a_sys_paths_snapshot(
-        self, testdir, monkeypatch
-    ):
-        spy_factory = self.spy_factory()
-        monkeypatch.setattr(pytester, "SysPathsSnapshot", spy_factory)
-        test_mod = testdir.makepyfile("def test_foo(): pass")
-        testdir.inline_run(str(test_mod))
-        assert len(spy_factory.instances) == 1
-        spy = spy_factory.instances[0]
-        assert spy._spy_restore_count == 1
 
 
 def test_assert_outcomes_after_pytest_error(testdir):

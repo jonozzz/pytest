@@ -18,6 +18,208 @@ with advance notice in the **Deprecations** section of releases.
 
 .. towncrier release notes start
 
+pytest 3.8.1 (2018-09-22)
+=========================
+
+Bug Fixes
+---------
+
+- `#3286 <https://github.com/pytest-dev/pytest/issues/3286>`_: ``.pytest_cache`` directory is now automatically ignored by Git. Users who would like to contribute a solution for other SCMs please consult/comment on this issue.
+
+
+- `#3749 <https://github.com/pytest-dev/pytest/issues/3749>`_: Fix the following error during collection of tests inside packages::
+
+      TypeError: object of type 'Package' has no len()
+
+
+- `#3941 <https://github.com/pytest-dev/pytest/issues/3941>`_: Fix bug where indirect parametrization would consider the scope of all fixtures used by the test function to determine the parametrization scope, and not only the scope of the fixtures being parametrized.
+
+
+- `#3973 <https://github.com/pytest-dev/pytest/issues/3973>`_: Fix crash of the assertion rewriter if a test changed the current working directory without restoring it afterwards.
+
+
+- `#3998 <https://github.com/pytest-dev/pytest/issues/3998>`_: Fix issue that prevented some caplog properties (for example ``record_tuples``) from being available when entering the debugger with ``--pdb``.
+
+
+- `#3999 <https://github.com/pytest-dev/pytest/issues/3999>`_: Fix ``UnicodeDecodeError`` in python2.x when a class returns a non-ascii binary ``__repr__`` in an assertion which also contains non-ascii text.
+
+
+
+Improved Documentation
+----------------------
+
+- `#3996 <https://github.com/pytest-dev/pytest/issues/3996>`_: New `Deprecations and Removals <https://docs.pytest.org/en/latest/deprecations.html>`_ page shows all currently
+  deprecated features, the rationale to do so, and alternatives to update your code. It also list features removed
+  from pytest in past major releases to help those with ancient pytest versions to upgrade.
+
+
+
+Trivial/Internal Changes
+------------------------
+
+- `#3955 <https://github.com/pytest-dev/pytest/issues/3955>`_: Improve pre-commit detection for changelog filenames
+
+
+- `#3975 <https://github.com/pytest-dev/pytest/issues/3975>`_: Remove legacy code around im_func as that was python2 only
+
+
+pytest 3.8.0 (2018-09-05)
+=========================
+
+Deprecations and Removals
+-------------------------
+
+- `#2452 <https://github.com/pytest-dev/pytest/issues/2452>`_: ``Config.warn`` and ``Node.warn`` have been
+  deprecated, see `<https://docs.pytest.org/en/latest/deprecations.html#config-warn-and-node-warn>`_ for rationale and
+  examples.
+
+- `#3936 <https://github.com/pytest-dev/pytest/issues/3936>`_: ``@pytest.mark.filterwarnings`` second parameter is no longer regex-escaped,
+  making it possible to actually use regular expressions to check the warning message.
+
+  **Note**: regex-escaping the match string was an implementation oversight that might break test suites which depend
+  on the old behavior.
+
+
+
+Features
+--------
+
+- `#2452 <https://github.com/pytest-dev/pytest/issues/2452>`_: Internal pytest warnings are now issued using the standard ``warnings`` module, making it possible to use
+  the standard warnings filters to manage those warnings. This introduces ``PytestWarning``,
+  ``PytestDeprecationWarning`` and ``RemovedInPytest4Warning`` warning types as part of the public API.
+
+  Consult `the documentation <https://docs.pytest.org/en/latest/warnings.html#internal-pytest-warnings>`_ for more info.
+
+
+- `#2908 <https://github.com/pytest-dev/pytest/issues/2908>`_: ``DeprecationWarning`` and ``PendingDeprecationWarning`` are now shown by default if no other warning filter is
+  configured. This makes pytest more compliant with
+  `PEP-0506 <https://www.python.org/dev/peps/pep-0565/#recommended-filter-settings-for-test-runners>`_. See
+  `the docs <https://docs.pytest.org/en/latest/warnings.html#deprecationwarning-and-pendingdeprecationwarning>`_ for
+  more info.
+
+
+- `#3251 <https://github.com/pytest-dev/pytest/issues/3251>`_: Warnings are now captured and displayed during test collection.
+
+
+- `#3784 <https://github.com/pytest-dev/pytest/issues/3784>`_: ``PYTEST_DISABLE_PLUGIN_AUTOLOAD`` environment variable disables plugin auto-loading when set.
+
+
+- `#3829 <https://github.com/pytest-dev/pytest/issues/3829>`_: Added the ``count`` option to ``console_output_style`` to enable displaying the progress as a count instead of a percentage.
+
+
+- `#3837 <https://github.com/pytest-dev/pytest/issues/3837>`_: Added support for 'xfailed' and 'xpassed' outcomes to the ``pytester.RunResult.assert_outcomes`` signature.
+
+
+
+Bug Fixes
+---------
+
+- `#3911 <https://github.com/pytest-dev/pytest/issues/3911>`_: Terminal writer now takes into account unicode character width when writing out progress.
+
+
+- `#3913 <https://github.com/pytest-dev/pytest/issues/3913>`_: Pytest now returns with correct exit code (EXIT_USAGEERROR, 4) when called with unknown arguments.
+
+
+- `#3918 <https://github.com/pytest-dev/pytest/issues/3918>`_: Improve performance of assertion rewriting.
+
+
+
+Improved Documentation
+----------------------
+
+- `#3566 <https://github.com/pytest-dev/pytest/issues/3566>`_: Added a blurb in usage.rst for the usage of -r flag which is used to show an extra test summary info.
+
+
+- `#3907 <https://github.com/pytest-dev/pytest/issues/3907>`_: Corrected type of the exceptions collection passed to ``xfail``: ``raises`` argument accepts a ``tuple`` instead of ``list``.
+
+
+
+Trivial/Internal Changes
+------------------------
+
+- `#3853 <https://github.com/pytest-dev/pytest/issues/3853>`_: Removed ``"run all (no recorded failures)"`` message printed with ``--failed-first`` and ``--last-failed`` when there are no failed tests.
+
+
+pytest 3.7.4 (2018-08-29)
+=========================
+
+Bug Fixes
+---------
+
+- `#3506 <https://github.com/pytest-dev/pytest/issues/3506>`_: Fix possible infinite recursion when writing ``.pyc`` files.
+
+
+- `#3853 <https://github.com/pytest-dev/pytest/issues/3853>`_: Cache plugin now obeys the ``-q`` flag when ``--last-failed`` and ``--failed-first`` flags are used.
+
+
+- `#3883 <https://github.com/pytest-dev/pytest/issues/3883>`_: Fix bad console output when using ``console_output_style=classic``.
+
+
+- `#3888 <https://github.com/pytest-dev/pytest/issues/3888>`_: Fix macOS specific code using ``capturemanager`` plugin in doctests.
+
+
+
+Improved Documentation
+----------------------
+
+- `#3902 <https://github.com/pytest-dev/pytest/issues/3902>`_: Fix pytest.org links
+
+
+pytest 3.7.3 (2018-08-26)
+=========================
+
+Bug Fixes
+---------
+
+- `#3033 <https://github.com/pytest-dev/pytest/issues/3033>`_: Fixtures during teardown can again use ``capsys`` and ``capfd`` to inspect output captured during tests.
+
+
+- `#3773 <https://github.com/pytest-dev/pytest/issues/3773>`_: Fix collection of tests from ``__init__.py`` files if they match the ``python_files`` configuration option.
+
+
+- `#3796 <https://github.com/pytest-dev/pytest/issues/3796>`_: Fix issue where teardown of fixtures of consecutive sub-packages were executed once, at the end of the outer
+  package.
+
+
+- `#3816 <https://github.com/pytest-dev/pytest/issues/3816>`_: Fix bug where ``--show-capture=no`` option would still show logs printed during fixture teardown.
+
+
+- `#3819 <https://github.com/pytest-dev/pytest/issues/3819>`_: Fix ``stdout/stderr`` not getting captured when real-time cli logging is active.
+
+
+- `#3843 <https://github.com/pytest-dev/pytest/issues/3843>`_: Fix collection error when specifying test functions directly in the command line using ``test.py::test`` syntax together with ``--doctest-modules``.
+
+
+- `#3848 <https://github.com/pytest-dev/pytest/issues/3848>`_: Fix bugs where unicode arguments could not be passed to ``testdir.runpytest`` on Python 2.
+
+
+- `#3854 <https://github.com/pytest-dev/pytest/issues/3854>`_: Fix double collection of tests within packages when the filename starts with a capital letter.
+
+
+
+Improved Documentation
+----------------------
+
+- `#3824 <https://github.com/pytest-dev/pytest/issues/3824>`_: Added example for multiple glob pattern matches in ``python_files``.
+
+
+- `#3833 <https://github.com/pytest-dev/pytest/issues/3833>`_: Added missing docs for ``pytester.Testdir``.
+
+
+- `#3870 <https://github.com/pytest-dev/pytest/issues/3870>`_: Correct documentation for setuptools integration.
+
+
+
+Trivial/Internal Changes
+------------------------
+
+- `#3826 <https://github.com/pytest-dev/pytest/issues/3826>`_: Replace broken type annotations with type comments.
+
+
+- `#3845 <https://github.com/pytest-dev/pytest/issues/3845>`_: Remove a reference to issue `#568 <https://github.com/pytest-dev/pytest/issues/568>`_ from the documentation, which has since been
+  fixed.
+
+
 pytest 3.7.2 (2018-08-16)
 =========================
 
@@ -86,15 +288,10 @@ pytest 3.7.0 (2018-07-30)
 Deprecations and Removals
 -------------------------
 
-- `#2639 <https://github.com/pytest-dev/pytest/issues/2639>`_: ``pytest_namespace`` has been deprecated.
-
-  See the documentation for ``pytest_namespace`` hook for suggestions on how to deal
-  with this in plugins which use this functionality.
+- `#2639 <https://github.com/pytest-dev/pytest/issues/2639>`_: ``pytest_namespace`` has been `deprecated <https://docs.pytest.org/en/latest/deprecations.html#pytest-namespace>`_.
 
 
-- `#3661 <https://github.com/pytest-dev/pytest/issues/3661>`_: Calling a fixture function directly, as opposed to request them in a test function, now issues a ``RemovedInPytest4Warning``. It will be changed into an error in pytest ``4.0``.
-
-  This is a great source of confusion to new users, which will often call the fixture functions and request them from test functions interchangeably, which breaks the fixture resolution model.
+- `#3661 <https://github.com/pytest-dev/pytest/issues/3661>`_: Calling a fixture function directly, as opposed to request them in a test function, now issues a ``RemovedInPytest4Warning``. See `the documentation for rationale and examples <https://docs.pytest.org/en/latest/deprecations.html#calling-fixtures-directly>`_.
 
 
 
@@ -456,7 +653,7 @@ Deprecations and Removals
   <https://github.com/pytest-dev/pytest/issues/2770>`_)
 
 - Defining ``pytest_plugins`` is now deprecated in non-top-level conftest.py
-  files, because they "leak" to the entire directory tree. (`#3084
+  files, because they "leak" to the entire directory tree. `See the docs <https://docs.pytest.org/en/latest/deprecations.html#pytest-plugins-in-non-top-level-conftest-files>`_ for the rationale behind this decision (`#3084
   <https://github.com/pytest-dev/pytest/issues/3084>`_)
 
 
