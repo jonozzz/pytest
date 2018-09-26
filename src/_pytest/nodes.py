@@ -450,7 +450,10 @@ class FSCollector(Collector):
         fspath = py.path.local(fspath)  # xxx only for test_resultlog.py?
         name = fspath.basename
         if parent is not None:
-            rel = fspath.relto(parent.fspath)
+            parent_dir = (
+                parent.fspath if parent.fspath.isdir() else parent.fspath.dirpath()
+            )
+            rel = fspath.relto(parent_dir)
             if rel:
                 name = rel
             name = name.replace(os.sep, SEP)
